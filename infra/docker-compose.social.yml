@@ -1,0 +1,85 @@
+name: openleek-social
+
+x-healthcheck: &healthcheck
+  interval: 5s
+  timeout: 3s
+  retries: 20
+  start_period: 10s
+
+x-social-runtime: &social-runtime
+  build:
+    context: ..
+    dockerfile: docker/next-service.Dockerfile
+  init: true
+  working_dir: /app
+  volumes:
+    - ../apps:/app/apps
+    - ../packages:/app/packages
+    - ../scripts:/app/scripts:ro
+    - ../node_modules:/app/node_modules:ro
+    - ../package.json:/app/package.json:ro
+    - ../pnpm-lock.yaml:/app/pnpm-lock.yaml:ro
+    - ../pnpm-workspace.yaml:/app/pnpm-workspace.yaml:ro
+    - ../tsconfig.base.json:/app/tsconfig.base.json:ro
+
+x-social-environment: &social-environment
+  OPENLEEK_APP_PACKAGE: "@openleek/social-environment"
+  OPENLEEK_APP_DIR: "/app/apps/social-environment"
+  OPENLEEK_WATCH_PATHS: "/app/apps/social-environment,/app/apps/social-environment/src,/app/packages"
+  OPENLEEK_SOCIAL_ENVIRONMENT_DATABASE_URL: postgresql://openleek_social_environment_owner:${OPENLEEK_SOCIAL_ENVIRONMENT_DB_PASSWORD:-openleek-social-environment-password}@postgres:5432/openleek_social_environment
+  OPENLEEK_SOCIAL_REVISION_CACHE_MAX_BYTES: ${OPENLEEK_SOCIAL_REVISION_CACHE_MAX_BYTES:-268435456}
+  OPENLEEK_SOCIAL_NEO4J_URI: bolt://neo4j:7687
+  OPENLEEK_SOCIAL_NEO4J_USER: neo4j
+  OPENLEEK_SOCIAL_NEO4J_PASSWORD: ${OPENLEEK_SOCIAL_NEO4J_PASSWORD:-openleek-social-neo4j-password}
+  OPENLEEK_SOCIAL_NEO4J_DATABASE: neo4j
+  OPENLEEK_SOCIAL_MCP_URL: http://social-environment:3000/internal/mcp
+  OPENLEEK_CONTEXT_BEARER_TOKEN: ${OPENLEEK_SOCIAL_CONTEXT_BEARER_TOKEN:-openleek-social-context-bearer-token-change-me}
+  OPENLEEK_ALGORITHM_RUNNER_URL: http://algorithm-runner:8080
+  OPENLEEK_SOCIAL_FEED_ALGORITHM_HISTORY_URL: http://social-environment:3000/internal/feed-algorithm/history
+  OPENLEEK_EXPERIMENT_CREDENTIAL_KID: ${OPENLEEK_EXPERIMENT_CREDENTIAL_KID:-local-ed25519-v1}
+  OPENLEEK_EXPERIMENT_CREDENTIAL_PUBLIC_KEY: ${OPENLEEK_EXPERIMENT_CREDENTIAL_PUBLIC_KEY:?OPENLEEK_EXPERIMENT_CREDENTIAL_PUBLIC_KEY is required}
+
+services:
+  social-environment:
+    <<: *social-runtime
+    command: ["node", "scripts/watch-next-service.mjs"]
+    environment:
+      <<: *social-environment
+      OPENLEEK_CONTEXT_OBSERVER_PROXY_TOKEN: ${OPENLEEK_CONSOLE_ACCESS_SESSION_SECRET:?OPENLEEK_CONSOLE_ACCESS_SESSION_SECRET is required}
+    networks:
+      social-data:
+      core-context-plugins:
+        aliases: [social-environment]
+      core-social:
+        aliases: [social-environment]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      <<: *healthcheck
+    restart: unless-stopped
+
+  social-environment-worker:
+    <<: *social-runtime
+    command: ["node", "scripts/watch-next-service.mjs"]
+    environment:
+      <<: *social-environment
+      OPENLEEK_SOCIAL_ENVIRONMENT_WORKER: "true"
+      OPENLEEK_WORKER_ID: social-environment-worker-1
+      OPENLEEK_REDIS_URL: redis://social:${OPENLEEK_SOCIAL_REDIS_PASSWORD:-openleek-social-redis-password}@redis:6379
+    networks:
+      - social-data
+      - core-social
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      <<: *healthcheck
+    restart: unless-stopped
+
+networks:
+  social-data:
+    name: openleek-social-data
+    external: true
+  core-context-plugins:
+    name: openleek-core-context-plugins
+    external: true
+  core-social:
+    name: openleek-core-social
+    external: true

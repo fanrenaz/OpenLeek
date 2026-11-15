@@ -1,0 +1,51 @@
+# Python caches and test/build state
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+
+# Local virtual environments and machine-local env files
+.venv/
+venv/
+node_modules/
+.next/
+**/.next/
+*.tsbuildinfo
+test-results/
+**/node_modules/
+.env
+.env.*
+!.env.example
+
+# OpenLeek run outputs and local experiment artifacts
+/runs/
+/run-output/
+/outputs/
+/tmp/
+/.runtime/
+*.log
+/otel_traces*.jsonl
+/2d9eb720-d401-484c-9c59-8c9644bc96aa_00*
+/2d9eb720-d401-484c-9c59-8c9644bc96aa_split*
+
+# Python packaging outputs
+/dist/
+/build/
+
+# Rust/Cargo build outputs, including crates/matching-engine/target
+target/
+**/target/
+infra/codex-home/
+sdk/runs/
+sdk/node_modules/
+sdk/dist/
+console/node_modules/
+console/dist/
+console/test-results/
+console/playwright-report/

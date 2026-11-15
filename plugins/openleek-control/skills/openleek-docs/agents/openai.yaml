@@ -1,0 +1,13 @@
+interface:
+  display_name: "OpenLeek Docs"
+  short_description: "Read live OpenLeek domain contracts and evidence"
+  default_prompt: "Use $openleek-docs to answer this OpenLeek contract question from the live data dictionary."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "openleek_control"
+      description: "Private OpenLeek Control MCP read surfaces"
+      transport: "streamable_http"
+      url: "https://openleek.noesis-ai.com/api/control/mcp"
+policy:
+  allow_implicit_invocation: true

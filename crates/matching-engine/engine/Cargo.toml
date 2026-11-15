@@ -1,0 +1,10 @@
+[package]
+name = "openleek-engine"
+description = "Core LOB matching engine — price-time priority continuous double auction"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "openleek_engine"

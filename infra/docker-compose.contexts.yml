@@ -1,0 +1,547 @@
+name: openleek
+
+x-healthcheck: &healthcheck
+  interval: 5s
+  timeout: 3s
+  retries: 20
+  start_period: 10s
+
+x-next-build: &next-build
+  context: ..
+  dockerfile: docker/next-service.Dockerfile
+
+# The single-user instance runs directly from the checked-out workspace. The
+# tool image changes only when Node itself changes; application edits arrive
+# through these mounts and never trigger a Docker build.
+x-workspace-volumes: &workspace-volumes
+  - ../apps:/app/apps
+  - ../packages:/app/packages
+  - ../scripts:/app/scripts:ro
+  - ../node_modules:/app/node_modules:ro
+  - ../package.json:/app/package.json:ro
+  - ../pnpm-lock.yaml:/app/pnpm-lock.yaml:ro
+  - ../pnpm-workspace.yaml:/app/pnpm-workspace.yaml:ro
+  - ../tsconfig.base.json:/app/tsconfig.base.json:ro
+
+x-experiment-volumes: &experiment-volumes
+  - ../apps:/app/apps
+  - ../packages:/app/packages
+  - ../scripts:/app/scripts:ro
+  - ../node_modules:/app/node_modules:ro
+  - ../package.json:/app/package.json:ro
+  - ../pnpm-lock.yaml:/app/pnpm-lock.yaml:ro
+  - ../pnpm-workspace.yaml:/app/pnpm-workspace.yaml:ro
+  - ../tsconfig.base.json:/app/tsconfig.base.json:ro
+  - ../apps/experiment/src:/tmp/openleek/apps/experiment/src:ro
+
+x-next-runtime: &next-runtime
+  build: *next-build
+  init: true
+  working_dir: /app
+  volumes: *workspace-volumes
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.1-pg16@sha256:33198da2828a14c30348d2ccb4750833d5ed9a44c88d840a0e523d7417120337
+    shm_size: 512m
+    environment:
+      POSTGRES_USER: openleek_admin
+      POSTGRES_PASSWORD: ${OPENLEEK_POSTGRES_ADMIN_PASSWORD:-openleek-admin-password}
+      POSTGRES_DB: postgres
+      OPENLEEK_EXPERIMENT_DB_PASSWORD: ${OPENLEEK_EXPERIMENT_DB_PASSWORD:-openleek-experiment-password}
+      OPENLEEK_AGENT_EXECUTION_DB_PASSWORD: ${OPENLEEK_AGENT_EXECUTION_DB_PASSWORD:-openleek-agent-execution-password}
+      OPENLEEK_SOCIAL_ENVIRONMENT_DB_PASSWORD: ${OPENLEEK_SOCIAL_ENVIRONMENT_DB_PASSWORD:-openleek-social-environment-password}
+      OPENLEEK_FINANCIAL_MARKET_DB_PASSWORD: ${OPENLEEK_FINANCIAL_MARKET_DB_PASSWORD:-openleek-financial-market-password}
+      OPENLEEK_LLM_CONFIGURATION_DB_PASSWORD: ${OPENLEEK_LLM_CONFIGURATION_DB_PASSWORD:-openleek-llm-configuration-password}
+      OPENLEEK_HINDSIGHT_DB_PASSWORD: ${OPENLEEK_HINDSIGHT_DB_PASSWORD:-openleek-hindsight-password}
+      OPENLEEK_CONTEXT_REGISTRY_DB_PASSWORD: ${OPENLEEK_CONTEXT_REGISTRY_DB_PASSWORD:-openleek-context-registry-password}
+      OPENLEEK_CONTEXT_GATEWAY_DB_PASSWORD: ${OPENLEEK_CONTEXT_GATEWAY_DB_PASSWORD:-openleek-context-gateway-password}
+      OPENLEEK_NEWS_CONTEXT_DB_PASSWORD: ${OPENLEEK_NEWS_CONTEXT_DB_PASSWORD:-openleek-news-context-password}
+    volumes:
+      - openleek_postgres:/var/lib/postgresql/data
+      - ./context-db-bootstrap.sh:/usr/local/bin/openleek-context-db-bootstrap:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openleek_admin -d postgres"]
+      <<: *healthcheck
+    networks:
+      core-data:
+        aliases: [postgres]
+      financial-data:
+        aliases: [postgres]
+      social-data:
+        aliases: [postgres]
+      news-data:
+        aliases: [postgres]
+
+  # Social Environment alone uses this rebuildable projection. Postgres is its
+  # fact source, and no other service gets a Neo4j URL or credential.
+  neo4j:
+    image: neo4j:5-community
+    environment:
+      NEO4J_AUTH: neo4j/${OPENLEEK_SOCIAL_NEO4J_PASSWORD:-openleek-social-neo4j-password}
+    volumes:
+      - openleek_neo4j:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      <<: *healthcheck
+      interval: 30s
+      retries: 3
+      start_period: 30s
+      start_interval: 5s
+    networks:
+      social-data:
+        aliases: [neo4j]
+
+  # Streams absorb Context write bursts and preserve per-round arrival order.
+  # PostgreSQL remains the owner of terminal outcomes and durable cursors.
+  redis:
+    image: redis:7-alpine
+    command: ["sh", "/usr/local/bin/openleek-start-redis"]
+    environment:
+      OPENLEEK_FINANCIAL_REDIS_PASSWORD: ${OPENLEEK_FINANCIAL_REDIS_PASSWORD:-openleek-financial-redis-password}
+      OPENLEEK_SOCIAL_REDIS_PASSWORD: ${OPENLEEK_SOCIAL_REDIS_PASSWORD:-openleek-social-redis-password}
+      OPENLEEK_REDIS_ADMIN_PASSWORD: ${OPENLEEK_REDIS_ADMIN_PASSWORD:-openleek-redis-admin-password}
+    volumes:
+      - openleek_redis:/data
+      - ./start-redis.sh:/usr/local/bin/openleek-start-redis:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      <<: *healthcheck
+    networks:
+      financial-data:
+        aliases: [redis]
+      social-data:
+        aliases: [redis]
+
+  llm-configuration:
+    <<: *next-runtime
+    command: ["node", "scripts/watch-next-service.mjs"]
+    environment:
+      OPENLEEK_APP_PACKAGE: "@openleek/llm-configuration"
+      OPENLEEK_APP_DIR: "/app/apps/llm-configuration"
+      OPENLEEK_WATCH_PATHS: "/app/apps/llm-configuration,/app/apps/llm-configuration/src,/app/packages"
+      OPENLEEK_LLM_CONFIGURATION_DATABASE_URL: postgresql://openleek_llm_configuration_owner:${OPENLEEK_LLM_CONFIGURATION_DB_PASSWORD:-openleek-llm-configuration-password}@postgres:5432/openleek_llm_configuration
+      OPENLEEK_LLM_CONFIGURATION_ENCRYPTION_KEY: ${OPENLEEK_LLM_CONFIGURATION_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      OPENLEEK_LLM_CONFIGURATION_MANAGEMENT_TOKEN: ${OPENLEEK_LLM_CONFIGURATION_MANAGEMENT_TOKEN:-openleek-llm-management-token}
+      OPENLEEK_LLM_CONFIGURATION_HINDSIGHT_TOKEN: ${OPENLEEK_LLM_CONFIGURATION_HINDSIGHT_TOKEN:-openleek-llm-hindsight-token}
+      OPENLEEK_LLM_CONFIGURATION_BOOTSTRAP_PROVIDER: memory
+      OPENLEEK_LLM_CONFIGURATION_BOOTSTRAP_PROTOCOL: openai-chat
+      OPENLEEK_LLM_CONFIGURATION_BOOTSTRAP_BASE_URL: ${OPENAI_BASE_URL:?OPENAI_BASE_URL is required for Hindsight bootstrap}
+      OPENLEEK_LLM_CONFIGURATION_BOOTSTRAP_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required for Hindsight bootstrap}
+      OPENLEEK_LLM_CONFIGURATION_BOOTSTRAP_MODEL: ${OPENLEEK_LLM_ROUTER_DEFAULT_MODEL:?OPENLEEK_LLM_ROUTER_DEFAULT_MODEL is required for Hindsight bootstrap}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      <<: *healthcheck
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - core-data
+      - core-mesh
+      - core-egress
+  hindsight:
+    image: ghcr.io/vectorize-io/hindsight@sha256:0710076cd1539b4f89537d2e5b0ea1e4d179885bc12809a56cf748c538c8c4fb
+    command: ["python", "/opt/openleek/start-hindsight.py"]
+    environment:
+      OPENLEEK_LLM_CONFIGURATION_URL: http://llm-configuration:3000
+      OPENLEEK_LLM_CONFIGURATION_HINDSIGHT_TOKEN: ${OPENLEEK_LLM_CONFIGURATION_HINDSIGHT_TOKEN:-openleek-llm-hindsight-token}
+      OPENLEEK_HINDSIGHT_ROUTE: memory
+      HINDSIGHT_API_DATABASE_URL: postgresql://openleek_hindsight_owner:${OPENLEEK_HINDSIGHT_DB_PASSWORD:-openleek-hindsight-password}@postgres:5432/openleek_hindsight
+      HINDSIGHT_API_EMBEDDINGS_PROVIDER: local
+      HINDSIGHT_API_RERANKER_PROVIDER: local
+      HINDSIGHT_API_WORKER_ID: openleek-hindsight-1
+      HINDSIGHT_API_WORKER_IMPORT_DOCUMENTS_MAX_SLOTS: "4"
+      HINDSIGHT_API_ENABLE_DOCUMENT_EXPORT_API: "true"
+      HINDSIGHT_API_ENABLE_DOCUMENT_IMPORT_API: "true"
+    volumes:
+      - ./start-hindsight.py:/opt/openleek/start-hindsight.py:ro
+    expose:
+      - "8888"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8888/health"]
+      <<: *healthcheck
+      start_period: 60s
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      llm-configuration:
+        condition: service_healthy
+    networks:
+      - core-data
+      - core-mesh
+      - core-egress
+
+  # Agent Execution receives only this restricted internal Docker API. The
+  # host daemon socket never enters a sandbox container directly.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.1.2
+    environment:
+      CONTAINERS: "1"
+      IMAGES: "0"
+      NETWORKS: "0"
+      VOLUMES: "0"
+      INFO: "0"
+      PING: "0"
+      VERSION: "0"
+      POST: "1"
+      DELETE: "1"
+      AUTH: "0"
+      BUILD: "0"
+      COMMIT: "0"
+      CONFIGS: "0"
+      DISTRIBUTION: "0"
+      EVENTS: "0"
+      EXEC: "0"
+      NODES: "0"
+      PLUGINS: "0"
+      SERVICES: "0"
+      SECRETS: "0"
+      SESSION: "0"
+      SWARM: "0"
+      SYSTEM: "0"
+      TASKS: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    expose:
+      - "2375"
+    networks:
+      # Deliberately separate from sandbox-mesh: the dynamic app-server must
+      # never be able to reach Docker's control plane, even through a
+      # restricted proxy.
+      - docker-control
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:2375/containers/json >/dev/null"]
+      <<: *healthcheck
+
+  agent-execution:
+    <<: *next-runtime
+    command: ["node", "scripts/watch-next-service.mjs"]
+    environment:
+      OPENLEEK_APP_PACKAGE: "@openleek/agent-execution"
+      OPENLEEK_APP_DIR: "/app/apps/agent-execution"
+      OPENLEEK_WATCH_PATHS: "/app/apps/agent-execution,/app/apps/agent-execution/src,/app/packages"
+      OPENLEEK_AGENT_EXECUTION_DATABASE_URL: postgresql://openleek_agent_execution_owner:${OPENLEEK_AGENT_EXECUTION_DB_PASSWORD:-openleek-agent-execution-password}@postgres:5432/openleek_agent_execution
+      # Sandbox descriptors are minted per Experiment. There is deliberately
+      # no globally-addressable app-server endpoint or shared token here.
+      OPENLEEK_SANDBOX_APP_SERVER_TOKEN: ${OPENLEEK_SANDBOX_APP_SERVER_TOKEN:?OPENLEEK_SANDBOX_APP_SERVER_TOKEN is required}
+      OPENLEEK_CHATGPT_AUTH_BROKER_URL: http://chatgpt-auth-broker:4502
+      OPENLEEK_CHATGPT_AUTH_BROKER_TOKEN: ${OPENLEEK_CHATGPT_AUTH_BROKER_TOKEN:-${OPENLEEK_SANDBOX_APP_SERVER_TOKEN:?OPENLEEK_SANDBOX_APP_SERVER_TOKEN is required}}
+      OPENLEEK_SANDBOX_HOOK_SECRET: ${OPENLEEK_SANDBOX_HOOK_SECRET:-openleek-sandbox-hook-secret-change-me}
+      OPENLEEK_SANDBOX_HOOK_URL: http://agent-execution:3000/api/internal/codex-hooks/user-prompt-submit
+      OPENLEEK_SANDBOX_TOOL_BUDGET_HOOK_URL: http://agent-execution:3000/api/internal/codex-hooks/pre-tool-use
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?DEEPSEEK_API_KEY is required}
+      OPENLEEK_HINDSIGHT_URL: http://hindsight:8888
+      OPENLEEK_CODEX_SANDBOX_MODE: workspace-write
+      # Docker create bind-mounts this same absolute host directory into each
+      # Experiment-specific app-server container.
+      OPENLEEK_SANDBOX_RUNS_HOST_PATH: ${OPENLEEK_SANDBOX_RUNS_HOST_PATH:?OPENLEEK_SANDBOX_RUNS_HOST_PATH must be an absolute host path}
+      OPENLEEK_SANDBOX_RUNS_CONTAINER_PATH: /var/lib/openleek/runs
+      OPENLEEK_SANDBOX_CONTROL_NETWORK: openleek-sandbox-control
+      OPENLEEK_SANDBOX_CONTEXT_NETWORK: openleek-sandbox-context-gateway
+      OPENLEEK_SANDBOX_EGRESS_NETWORK: openleek-run-egress
+      OPENLEEK_SANDBOX_IMAGE: openleek-codex-sandbox:local
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+    volumes:
+      - ../apps:/app/apps
+      - ../packages:/app/packages
+      - ../scripts:/app/scripts:ro
+      - ../node_modules:/app/node_modules:ro
+      - ../package.json:/app/package.json:ro
+      - ../pnpm-lock.yaml:/app/pnpm-lock.yaml:ro
+      - ../pnpm-workspace.yaml:/app/pnpm-workspace.yaml:ro
+      - ../tsconfig.base.json:/app/tsconfig.base.json:ro
+      - ${OPENLEEK_SANDBOX_RUNS_HOST_PATH:?OPENLEEK_SANDBOX_RUNS_HOST_PATH must be an absolute host path}:/var/lib/openleek/runs
+    networks:
+      - core-data
+      - core-mesh
+      - sandbox-control
+      - run-egress
+      - docker-control
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      <<: *healthcheck
+    depends_on:
+      docker-socket-proxy:
+        condition: service_started
+      chatgpt-auth-broker:
+        condition: service_healthy
+      hindsight:
+        condition: service_healthy
+
+  chatgpt-auth-broker:
+    image: openleek-codex-sandbox:local
+    init: true
+    environment:
+      OPENLEEK_CODEX_MODE: auth-broker
+      OPENLEEK_CHATGPT_AUTH_BROKER_TOKEN: ${OPENLEEK_CHATGPT_AUTH_BROKER_TOKEN:-${OPENLEEK_SANDBOX_APP_SERVER_TOKEN:?OPENLEEK_SANDBOX_APP_SERVER_TOKEN is required}}
+      CODEX_HOME: /var/lib/codex
+    volumes:
+      - openleek_chatgpt_auth:/var/lib/codex
+    networks:
+      - sandbox-control
+      - run-egress
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4502/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      <<: *healthcheck
+
+  # Separate Python 3.12 process for published Context algorithms. It deliberately
+  # has no owner database DSN, Redis, Experiment, Neo4j, or Codex credential.
+  algorithm-runner:
+    build:
+      context: ../algorithm-runner
+      dockerfile: Dockerfile
+    command: ["python", "watch_runner.py"]
+    volumes:
+      - ../algorithm-runner:/srv/algorithm-runner:ro
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      core-financial:
+        aliases: [algorithm-runner]
+      core-social:
+        aliases: [algorithm-runner]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health').read()"]
+      <<: *healthcheck
+
+  experiment:
+    <<: *next-runtime
+    volumes: *experiment-volumes
+    tmpfs:
+      - /tmp/openleek/apps/experiment:uid=1000,gid=1000,mode=0755
+    command: ["node", "scripts/watch-next-service.mjs"]
+    environment:
+      OPENLEEK_APP_PACKAGE: "@openleek/experiment"
+      OPENLEEK_APP_DIR: "/app/apps/experiment"
+      OPENLEEK_RUNTIME_APP_DIR: "/tmp/openleek/apps/experiment"
+      OPENLEEK_WATCH_PATHS: "/app/apps/experiment,/app/apps/experiment/src,/app/packages"
+      OPENLEEK_NEXT_DIST_DIR: .next-server
+      OPENLEEK_EXPERIMENT_DATABASE_URL: postgresql://openleek_experiment_owner:${OPENLEEK_EXPERIMENT_DB_PASSWORD:-openleek-experiment-password}@postgres:5432/openleek_experiment
+      OPENLEEK_AGENT_EXECUTION_URL: http://agent-execution:3000
+      OPENLEEK_CONTEXT_REGISTRY_URL: http://context-registry:3000
+      OPENLEEK_CONTEXT_REGISTRY_MANAGEMENT_TOKEN: ${OPENLEEK_CONTEXT_REGISTRY_MANAGEMENT_TOKEN:-openleek-context-registry-management-token}
+      OPENLEEK_CONTEXT_GATEWAY_URL: http://context-gateway:3000
+      OPENLEEK_CONTEXT_GATEWAY_MANAGEMENT_TOKEN: ${OPENLEEK_CONTEXT_GATEWAY_MANAGEMENT_TOKEN:-openleek-context-gateway-management-token}
+      OPENLEEK_EXPERIMENT_CREDENTIAL_KID: ${OPENLEEK_EXPERIMENT_CREDENTIAL_KID:-local-ed25519-v1}
+      OPENLEEK_EXPERIMENT_CREDENTIAL_PRIVATE_KEY: ${OPENLEEK_EXPERIMENT_CREDENTIAL_PRIVATE_KEY:?OPENLEEK_EXPERIMENT_CREDENTIAL_PRIVATE_KEY is required}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      <<: *healthcheck
+    depends_on:
+      agent-execution:
+        condition: service_healthy
+    networks:
+      - core-data
+      - core-mesh
+      - core-context-plugins
+
+  # A separate process/image instance consumes durable Agent jobs. It exposes
+  # no control-plane port; PostgreSQL leases make future horizontal scaling safe.
+  experiment-worker:
+    <<: *next-runtime
+    volumes: *experiment-volumes
+    tmpfs:
+      - /tmp/openleek/apps/experiment:uid=1000,gid=1000,mode=0755
+    command: ["node", "scripts/watch-next-service.mjs"]
+    environment:
+      OPENLEEK_APP_PACKAGE: "@openleek/experiment"
+      OPENLEEK_APP_DIR: "/app/apps/experiment"
+      OPENLEEK_RUNTIME_APP_DIR: "/tmp/openleek/apps/experiment"
+      OPENLEEK_WATCH_PATHS: "/app/apps/experiment,/app/apps/experiment/src,/app/packages"
+      OPENLEEK_NEXT_DIST_DIR: .next-worker
+      OPENLEEK_EXPERIMENT_WORKER: "true"
+      OPENLEEK_WORKER_ID: experiment-worker-1
+      OPENLEEK_EXPERIMENT_DATABASE_URL: postgresql://openleek_experiment_owner:${OPENLEEK_EXPERIMENT_DB_PASSWORD:-openleek-experiment-password}@postgres:5432/openleek_experiment
+      OPENLEEK_AGENT_EXECUTION_URL: http://agent-execution:3000
+      OPENLEEK_CONTEXT_REGISTRY_URL: http://context-registry:3000
+      OPENLEEK_CONTEXT_REGISTRY_MANAGEMENT_TOKEN: ${OPENLEEK_CONTEXT_REGISTRY_MANAGEMENT_TOKEN:-openleek-context-registry-management-token}
+      OPENLEEK_CONTEXT_GATEWAY_URL: http://context-gateway:3000
+      OPENLEEK_CONTEXT_GATEWAY_MANAGEMENT_TOKEN: ${OPENLEEK_CONTEXT_GATEWAY_MANAGEMENT_TOKEN:-openleek-context-gateway-management-token}
+      OPENLEEK_EXPERIMENT_CREDENTIAL_KID: ${OPENLEEK_EXPERIMENT_CREDENTIAL_KID:-local-ed25519-v1}
+      OPENLEEK_EXPERIMENT_CREDENTIAL_PRIVATE_KEY: ${OPENLEEK_EXPERIMENT_CREDENTIAL_PRIVATE_KEY:?OPENLEEK_EXPERIMENT_CREDENTIAL_PRIVATE_KEY is required}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      <<: *healthcheck
+    depends_on:
+      agent-execution:
+        condition: service_healthy
+    networks:
+      - core-data
+      - core-mesh
+      - core-context-plugins
+
+  console:
+    <<: *next-runtime
+    working_dir: /app/apps/console
+    command: ["/app/node_modules/.bin/next", "dev", "--turbopack", "--hostname", "0.0.0.0", "--port", "3000"]
+    environment:
+      NODE_OPTIONS: --max-old-space-size=4096
+      OPENLEEK_EXPERIMENT_URL: http://experiment:3000
+      OPENLEEK_AGENT_EXECUTION_URL: http://agent-execution:3000
+      OPENLEEK_SOCIAL_ENVIRONMENT_URL: http://social-environment:3000
+      OPENLEEK_FINANCIAL_MARKET_URL: http://financial-market:3000
+      OPENLEEK_LLM_CONFIGURATION_URL: http://llm-configuration:3000
+      OPENLEEK_LLM_CONFIGURATION_MANAGEMENT_TOKEN: ${OPENLEEK_LLM_CONFIGURATION_MANAGEMENT_TOKEN:-openleek-llm-management-token}
+      OPENLEEK_CONSOLE_ACCESS_PASSWORD: ${OPENLEEK_CONSOLE_ACCESS_PASSWORD:?OPENLEEK_CONSOLE_ACCESS_PASSWORD is required}
+      OPENLEEK_CONSOLE_PUBLIC_ORIGIN: ${OPENLEEK_CONSOLE_PUBLIC_ORIGIN:-http://localhost:13000}
+      OPENLEEK_CONSOLE_ACCESS_SESSION_SECRET: ${OPENLEEK_CONSOLE_ACCESS_SESSION_SECRET:?OPENLEEK_CONSOLE_ACCESS_SESSION_SECRET is required}
+      OPENLEEK_CONTEXT_OBSERVER_PROXY_TOKEN: ${OPENLEEK_CONSOLE_ACCESS_SESSION_SECRET:?OPENLEEK_CONSOLE_ACCESS_SESSION_SECRET is required}
+      OPENLEEK_CONTEXT_REGISTRY_URL: http://context-registry:3000
+      OPENLEEK_CONTEXT_REGISTRY_MANAGEMENT_TOKEN: ${OPENLEEK_CONTEXT_REGISTRY_MANAGEMENT_TOKEN:-openleek-context-registry-management-token}
+      OPENLEEK_CONTEXT_PROVISIONER_URL: http://context-provisioner:3000
+      OPENLEEK_CONTEXT_PROVISIONER_MANAGEMENT_TOKEN: ${OPENLEEK_CONTEXT_PROVISIONER_MANAGEMENT_TOKEN:-openleek-context-provisioner-management-token}
+    ports:
+      - "127.0.0.1:${OPENLEEK_CONSOLE_PORT:-13000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      <<: *healthcheck
+    depends_on:
+      experiment:
+        condition: service_healthy
+      llm-configuration:
+        condition: service_healthy
+    networks:
+      - default
+      - core-mesh
+      - core-context-plugins
+      - core-financial
+      - core-social
+
+  context-registry:
+    <<: *next-runtime
+    command: ["node", "scripts/watch-next-service.mjs"]
+    environment:
+      OPENLEEK_APP_PACKAGE: "@openleek/context-registry"
+      OPENLEEK_APP_DIR: "/app/apps/context-registry"
+      OPENLEEK_WATCH_PATHS: "/app/apps/context-registry,/app/apps/context-registry/src,/app/packages"
+      OPENLEEK_CONTEXT_REGISTRY_DATABASE_URL: postgresql://openleek_context_registry_owner:${OPENLEEK_CONTEXT_REGISTRY_DB_PASSWORD:-openleek-context-registry-password}@postgres:5432/openleek_context_registry
+      OPENLEEK_CONTEXT_REGISTRY_ENCRYPTION_KEY: ${OPENLEEK_CONTEXT_REGISTRY_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      OPENLEEK_CONTEXT_REGISTRY_MANAGEMENT_TOKEN: ${OPENLEEK_CONTEXT_REGISTRY_MANAGEMENT_TOKEN:-openleek-context-registry-management-token}
+      OPENLEEK_BUILTIN_SOCIAL_CONTEXT_BEARER_TOKEN: ${OPENLEEK_SOCIAL_CONTEXT_BEARER_TOKEN:-openleek-social-context-bearer-token-change-me}
+      OPENLEEK_BUILTIN_FINANCIAL_CONTEXT_BEARER_TOKEN: ${OPENLEEK_FINANCIAL_CONTEXT_BEARER_TOKEN:-openleek-financial-context-bearer-token-change-me}
+      OPENLEEK_BUILTIN_NEWS_CONTEXT_URL: http://news-context:3000
+      OPENLEEK_BUILTIN_NEWS_CONTEXT_BEARER_TOKEN: ${OPENLEEK_NEWS_CONTEXT_BEARER_TOKEN:-openleek-news-context-bearer-token-change-me}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      <<: *healthcheck
+    restart: unless-stopped
+    depends_on: { postgres: { condition: service_healthy } }
+    networks: [core-data, core-mesh, core-context-plugins]
+
+  context-gateway:
+    <<: *next-runtime
+    command: ["node", "scripts/watch-next-service.mjs"]
+    environment:
+      OPENLEEK_APP_PACKAGE: "@openleek/context-gateway"
+      OPENLEEK_APP_DIR: "/app/apps/context-gateway"
+      OPENLEEK_WATCH_PATHS: "/app/apps/context-gateway,/app/apps/context-gateway/src,/app/packages"
+      OPENLEEK_CONTEXT_GATEWAY_DATABASE_URL: postgresql://openleek_context_gateway_owner:${OPENLEEK_CONTEXT_GATEWAY_DB_PASSWORD:-openleek-context-gateway-password}@postgres:5432/openleek_context_gateway
+      OPENLEEK_CONTEXT_GATEWAY_MANAGEMENT_TOKEN: ${OPENLEEK_CONTEXT_GATEWAY_MANAGEMENT_TOKEN:-openleek-context-gateway-management-token}
+      OPENLEEK_CONTEXT_GATEWAY_PUBLIC_URL: http://context-gateway:3000/mcp
+      OPENLEEK_CONTEXT_REGISTRY_URL: http://context-registry:3000
+      OPENLEEK_CONTEXT_REGISTRY_MANAGEMENT_TOKEN: ${OPENLEEK_CONTEXT_REGISTRY_MANAGEMENT_TOKEN:-openleek-context-registry-management-token}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      <<: *healthcheck
+    restart: unless-stopped
+    depends_on: { postgres: { condition: service_healthy }, context-registry: { condition: service_healthy } }
+    networks:
+      core-data:
+      core-mesh:
+      core-context-plugins:
+      sandbox-context-gateway:
+        aliases: [context-gateway]
+
+  context-provisioner:
+    <<: *next-runtime
+    command: ["node", "scripts/watch-next-service.mjs"]
+    environment:
+      OPENLEEK_APP_PACKAGE: "@openleek/context-provisioner"
+      OPENLEEK_APP_DIR: "/app/apps/context-provisioner"
+      OPENLEEK_WATCH_PATHS: "/app/apps/context-provisioner,/app/apps/context-provisioner/src,/app/packages"
+      OPENLEEK_CONTEXT_PROVISIONER_MANAGEMENT_TOKEN: ${OPENLEEK_CONTEXT_PROVISIONER_MANAGEMENT_TOKEN:-openleek-context-provisioner-management-token}
+      OPENLEEK_PROVISIONER_POSTGRES_ADMIN_URL: postgresql://openleek_admin:${OPENLEEK_POSTGRES_ADMIN_PASSWORD:-openleek-admin-password}@postgres:5432/postgres
+      OPENLEEK_REDIS_ADMIN_PASSWORD: ${OPENLEEK_REDIS_ADMIN_PASSWORD:-openleek-redis-admin-password}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      <<: *healthcheck
+    restart: unless-stopped
+    depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_healthy } }
+    networks: [core-data, core-mesh]
+
+volumes:
+  openleek_postgres:
+    name: openleek_openleek_postgres
+  openleek_neo4j:
+    name: openleek_openleek_neo4j
+  openleek_redis:
+    name: openleek_openleek_redis
+  openleek_chatgpt_auth:
+    name: openleek_chatgpt_auth
+
+networks:
+  core-data:
+    name: openleek-core-data
+    internal: true
+    ipam: { config: [{ subnet: "${OPENLEEK_CORE_DATA_SUBNET:-10.240.10.0/24}" }] }
+  financial-data:
+    name: openleek-financial-data
+    internal: true
+    ipam: { config: [{ subnet: "${OPENLEEK_FINANCIAL_DATA_SUBNET:-10.240.20.0/24}" }] }
+  social-data:
+    name: openleek-social-data
+    internal: true
+    ipam: { config: [{ subnet: "${OPENLEEK_SOCIAL_DATA_SUBNET:-10.240.30.0/24}" }] }
+  news-data:
+    name: openleek-news-data
+    internal: true
+    ipam: { config: [{ subnet: "${OPENLEEK_NEWS_DATA_SUBNET:-10.240.31.0/24}" }] }
+  core-mesh:
+    name: openleek-core-mesh
+    internal: true
+    ipam: { config: [{ subnet: "${OPENLEEK_CORE_MESH_SUBNET:-10.240.40.0/24}" }] }
+  core-context-plugins:
+    name: openleek-core-context-plugins
+    internal: true
+    ipam: { config: [{ subnet: "${OPENLEEK_CORE_CONTEXT_PLUGINS_SUBNET:-10.240.62.0/24}" }] }
+  core-financial:
+    name: openleek-core-financial
+    internal: true
+    ipam: { config: [{ subnet: "${OPENLEEK_CORE_FINANCIAL_SUBNET:-10.240.50.0/24}" }] }
+  core-social:
+    name: openleek-core-social
+    internal: true
+    ipam: { config: [{ subnet: "${OPENLEEK_CORE_SOCIAL_SUBNET:-10.240.60.0/24}" }] }
+  core-news:
+    name: openleek-core-news
+    internal: true
+    ipam: { config: [{ subnet: "${OPENLEEK_CORE_NEWS_SUBNET:-10.240.61.0/24}" }] }
+  sandbox-context-gateway:
+    name: openleek-sandbox-context-gateway
+    internal: true
+    attachable: true
+    ipam: { config: [{ subnet: "${OPENLEEK_SANDBOX_CONTEXT_GATEWAY_SUBNET:-10.240.83.0/24}" }] }
+  docker-control:
+    name: openleek-docker-control
+    internal: true
+    ipam: { config: [{ subnet: "${OPENLEEK_DOCKER_CONTROL_SUBNET:-10.240.70.0/28}" }] }
+  sandbox-control:
+    name: openleek-sandbox-control
+    internal: true
+    attachable: true
+    ipam: { config: [{ subnet: "${OPENLEEK_SANDBOX_CONTROL_SUBNET:-10.240.80.0/24}" }] }
+  core-egress:
+    name: openleek-core-egress
+    ipam: { config: [{ subnet: "${OPENLEEK_CORE_EGRESS_SUBNET:-10.240.90.0/24}" }] }
+  run-egress:
+    name: openleek-run-egress
+    attachable: true
+    ipam: { config: [{ subnet: "${OPENLEEK_RUN_EGRESS_SUBNET:-10.240.91.0/24}" }] }

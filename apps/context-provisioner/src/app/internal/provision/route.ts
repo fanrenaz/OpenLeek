@@ -1,0 +1,3 @@
+import { provisioner } from "../../../server/runtime";
+export const runtime = "nodejs";
+export async function POST(request: Request) { const token = process.env.OPENLEEK_CONTEXT_PROVISIONER_MANAGEMENT_TOKEN; if (!token || request.headers.get("authorization") !== `Bearer ${token}`) return Response.json({ error: "management authorization required" }, { status: 401 }); try { return Response.json(await provisioner().provision(await request.json()), { headers: { "cache-control": "no-store" } }); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "provisioning failed" }, { status: 400, headers: { "cache-control": "no-store" } }); } }

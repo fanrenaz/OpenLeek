@@ -1,0 +1,43 @@
+name: openleek-news
+x-healthcheck: &healthcheck
+  interval: 5s
+  timeout: 3s
+  retries: 20
+  start_period: 10s
+x-news-runtime: &news-runtime
+  build: { context: .., dockerfile: docker/next-service.Dockerfile }
+  init: true
+  working_dir: /app
+  volumes:
+    - ../apps:/app/apps
+    - ../packages:/app/packages
+    - ../scripts:/app/scripts:ro
+    - ../node_modules:/app/node_modules:ro
+    - ../package.json:/app/package.json:ro
+    - ../pnpm-lock.yaml:/app/pnpm-lock.yaml:ro
+    - ../pnpm-workspace.yaml:/app/pnpm-workspace.yaml:ro
+    - ../tsconfig.base.json:/app/tsconfig.base.json:ro
+services:
+  news-context:
+    <<: *news-runtime
+    command: ["node", "scripts/watch-next-service.mjs"]
+    environment:
+      OPENLEEK_APP_PACKAGE: "@openleek/news-context"
+      OPENLEEK_APP_DIR: "/app/apps/news-context"
+      OPENLEEK_WATCH_PATHS: "/app/apps/news-context,/app/apps/news-context/src,/app/packages"
+      OPENLEEK_NEWS_CONTEXT_DATABASE_URL: postgresql://openleek_news_context_owner:${OPENLEEK_NEWS_CONTEXT_DB_PASSWORD:-openleek-news-context-password}@postgres:5432/openleek_news_context
+      OPENLEEK_CONTEXT_BEARER_TOKEN: ${OPENLEEK_NEWS_CONTEXT_BEARER_TOKEN:-openleek-news-context-bearer-token-change-me}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      <<: *healthcheck
+    restart: unless-stopped
+    networks:
+      news-data:
+      core-context-plugins:
+        aliases: [news-context]
+      core-news:
+        aliases: [news-context]
+networks:
+  news-data: { name: openleek-news-data, external: true }
+  core-context-plugins: { name: openleek-core-context-plugins, external: true }
+  core-news: { name: openleek-core-news, external: true }

@@ -1,0 +1,4 @@
+import { createHash } from "node:crypto";
+
+export const socialUiModuleSource = `const define=(name,surface)=>{if(customElements.get(name))return;customElements.define(name,class extends HTMLElement{connectedCallback(){const root=this.shadowRoot||this.attachShadow({mode:"open"});const run=this.getAttribute("run-id")||"";const revision=this.getAttribute("revision-ref")||"";root.innerHTML='<style>:host{display:block;font:14px system-ui;color:inherit}a{color:inherit;font-weight:650}small{display:block;opacity:.7;margin-top:6px}</style><a href="/contexts/social/runs/'+encodeURIComponent(run)+'">Open Social '+surface+'</a><small>'+revision+'</small>';}})};define("openleek-social-configuration","configuration");define("openleek-social-assets","assets");define("openleek-social-observer","observer");define("openleek-social-facts","facts");`;
+export const socialUiModuleSha256 = createHash("sha256").update(socialUiModuleSource).digest("hex");

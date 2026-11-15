@@ -1,0 +1,11 @@
+abi <abi/4.0>,
+include <tunables/global>
+
+# The outer Docker container remains a dedicated per-Run boundary. This
+# executable profile permits only Codex's inner Linux sandbox launcher to
+# create the user namespace used by bubblewrap.
+profile openleek-codex-userns /usr/local/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/*/bin/codex flags=(unconfined) {
+  userns,
+
+  include if exists <local/openleek-codex-userns>
+}

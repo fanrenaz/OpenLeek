@@ -1,0 +1,1 @@
+import "@openleek/observability/bootstrap";

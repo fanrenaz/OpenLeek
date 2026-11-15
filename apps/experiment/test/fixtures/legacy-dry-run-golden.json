@@ -1,0 +1,38 @@
+{
+  "source_commit": "934bee15e0749266bd67a82563a294394857e5f4",
+  "seed": 42,
+  "seeded_action_order_salt": "agent-write-order-v1",
+  "configured_rounds": 2,
+  "round_limit": 1,
+  "legacy_phases": [
+    "round_boundary_recenter",
+    "media_ticks",
+    "agent_ticks",
+    "close_round"
+  ],
+  "agent_ids": [
+    "retail_investor_0000",
+    "retail_investor_0001",
+    "retail_investor_0002",
+    "retail_investor_0003",
+    "retail_investor_0004",
+    "retail_investor_0005",
+    "retail_investor_0006",
+    "retail_investor_0007"
+  ],
+  "legacy_ordered_agent_ids": [
+    "retail_investor_0005",
+    "retail_investor_0001",
+    "retail_investor_0004",
+    "retail_investor_0007",
+    "retail_investor_0003",
+    "retail_investor_0006",
+    "retail_investor_0000",
+    "retail_investor_0002"
+  ],
+  "social_actions_per_agent": 1,
+  "market_actions_per_agent": 1,
+  "trade_result_count": 8,
+  "social_event_count": 8,
+  "social_exposure_count": 0
+}

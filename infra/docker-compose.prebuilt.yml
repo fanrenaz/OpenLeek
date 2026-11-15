@@ -1,0 +1,75 @@
+services:
+  context-registry:
+    command: ["node", "/prebuilt/apps/context-registry/server.js"]
+    environment: { NODE_PATH: /prebuilt/node_modules, NODE_ENV: production }
+    volumes: !override
+      - ${OPENLEEK_PREBUILT_ROOT:?OPENLEEK_PREBUILT_ROOT is required}/context-registry:/prebuilt:ro
+      - ../node_modules:/prebuilt/node_modules:ro
+      - ../apps/context-registry/node_modules:/prebuilt/apps/context-registry/node_modules:ro
+  context-gateway:
+    command: ["node", "/prebuilt/apps/context-gateway/server.js"]
+    environment: { NODE_PATH: /prebuilt/node_modules, NODE_ENV: production }
+    volumes: !override
+      - ${OPENLEEK_PREBUILT_ROOT:?OPENLEEK_PREBUILT_ROOT is required}/context-gateway:/prebuilt:ro
+      - ../node_modules:/prebuilt/node_modules:ro
+      - ../apps/context-gateway/node_modules:/prebuilt/apps/context-gateway/node_modules:ro
+  context-provisioner:
+    command: ["node", "/prebuilt/apps/context-provisioner/server.js"]
+    environment: { NODE_PATH: /prebuilt/node_modules, NODE_ENV: production }
+    volumes: !override
+      - ${OPENLEEK_PREBUILT_ROOT:?OPENLEEK_PREBUILT_ROOT is required}/context-provisioner:/prebuilt:ro
+      - ../node_modules:/prebuilt/node_modules:ro
+      - ../apps/context-provisioner/node_modules:/prebuilt/apps/context-provisioner/node_modules:ro
+  llm-configuration:
+    command: ["node", "/prebuilt/apps/llm-configuration/server.js"]
+    environment:
+      NODE_PATH: /prebuilt/node_modules
+      NODE_ENV: production
+    volumes: !override
+      - ${OPENLEEK_PREBUILT_ROOT:?OPENLEEK_PREBUILT_ROOT is required}/llm-configuration:/prebuilt:ro
+      - ../node_modules:/prebuilt/node_modules:ro
+      - ../apps/llm-configuration/node_modules:/prebuilt/apps/llm-configuration/node_modules:ro
+
+  agent-execution:
+    command: ["node", "/prebuilt/apps/agent-execution/server.js"]
+    environment:
+      NODE_PATH: /prebuilt/node_modules
+      NODE_ENV: production
+    volumes: !override
+      - ${OPENLEEK_PREBUILT_ROOT:?OPENLEEK_PREBUILT_ROOT is required}/agent-execution:/prebuilt:ro
+      - ../node_modules:/prebuilt/node_modules:ro
+      - ../apps/agent-execution/node_modules:/prebuilt/apps/agent-execution/node_modules:ro
+      - ${OPENLEEK_SANDBOX_RUNS_HOST_PATH:?OPENLEEK_SANDBOX_RUNS_HOST_PATH must be an absolute host path}:/var/lib/openleek/runs
+
+  experiment:
+    command: ["node", "/prebuilt/apps/experiment/server.js"]
+    environment:
+      NODE_PATH: /prebuilt/node_modules
+      NODE_ENV: production
+    volumes: !override
+      - ${OPENLEEK_PREBUILT_ROOT:?OPENLEEK_PREBUILT_ROOT is required}/experiment:/prebuilt:ro
+      - ../node_modules:/prebuilt/node_modules:ro
+      - ../apps/experiment/node_modules:/prebuilt/apps/experiment/node_modules:ro
+
+  experiment-worker:
+    command: ["node", "/prebuilt/apps/experiment/server.js"]
+    environment:
+      NODE_PATH: /prebuilt/node_modules
+      NODE_ENV: production
+    volumes: !override
+      - ${OPENLEEK_PREBUILT_ROOT:?OPENLEEK_PREBUILT_ROOT is required}/experiment:/prebuilt:ro
+      - ../node_modules:/prebuilt/node_modules:ro
+      - ../apps/experiment/node_modules:/prebuilt/apps/experiment/node_modules:ro
+
+  console:
+    command: ["node", "/prebuilt/apps/console/server.js"]
+    environment:
+      NODE_PATH: /prebuilt/node_modules
+      NODE_ENV: production
+    volumes: !override
+      - ${OPENLEEK_PREBUILT_ROOT:?OPENLEEK_PREBUILT_ROOT is required}/console:/prebuilt:ro
+      - ../node_modules:/prebuilt/node_modules:ro
+      - ../apps/console/node_modules:/prebuilt/apps/console/node_modules:ro
+
+  algorithm-runner:
+    command: ["python", "runner.py"]

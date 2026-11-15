@@ -1,0 +1,18 @@
+[package]
+name = "openleek-matching-engine-napi"
+description = "N-API bindings for the OpenLeek deterministic matching core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", default-features = false, features = ["napi8"] }
+napi-derive = "2"
+openleek-engine = { path = "../engine" }
+
+[build-dependencies]
+napi-build = "2"

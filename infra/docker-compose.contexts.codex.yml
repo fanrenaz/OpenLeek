@@ -1,0 +1,8 @@
+# The base Compose now uses an internal, Experiment-specific app-server
+# container. This legacy override only preserves the explicit host workspace
+# path for callers that already include it in their Compose invocation.
+services:
+  agent-execution:
+    environment:
+      OPENLEEK_SANDBOX_RUNS_HOST_PATH: ${OPENLEEK_SANDBOX_RUNS_HOST_PATH:?set OPENLEEK_SANDBOX_RUNS_HOST_PATH to an absolute host path}
+      OPENLEEK_SANDBOX_RUNS_CONTAINER_PATH: /var/lib/openleek/runs

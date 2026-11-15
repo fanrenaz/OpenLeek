@@ -1,0 +1,20 @@
+services:
+  financial-market:
+    command: ["node", "/prebuilt/apps/financial-market/server.js"]
+    environment:
+      NODE_PATH: /prebuilt/node_modules
+      NODE_ENV: production
+    volumes: !override
+      - ${OPENLEEK_PREBUILT_ROOT:?OPENLEEK_PREBUILT_ROOT is required}/financial-market:/prebuilt:ro
+      - ../node_modules:/prebuilt/node_modules:ro
+      - ../apps/financial-market/node_modules:/prebuilt/apps/financial-market/node_modules:ro
+
+  financial-market-worker:
+    command: ["node", "/prebuilt/apps/financial-market/server.js"]
+    environment:
+      NODE_PATH: /prebuilt/node_modules
+      NODE_ENV: production
+    volumes: !override
+      - ${OPENLEEK_PREBUILT_ROOT:?OPENLEEK_PREBUILT_ROOT is required}/financial-market:/prebuilt:ro
+      - ../node_modules:/prebuilt/node_modules:ro
+      - ../apps/financial-market/node_modules:/prebuilt/apps/financial-market/node_modules:ro

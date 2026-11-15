@@ -1,0 +1,8 @@
+services:
+  news-context:
+    command: ["node", "/prebuilt/apps/news-context/server.js"]
+    environment: { NODE_PATH: /prebuilt/node_modules, NODE_ENV: production }
+    volumes: !override
+      - ${OPENLEEK_PREBUILT_ROOT:?OPENLEEK_PREBUILT_ROOT is required}/news-context:/prebuilt:ro
+      - ../node_modules:/prebuilt/node_modules:ro
+      - ../apps/news-context/node_modules:/prebuilt/apps/news-context/node_modules:ro

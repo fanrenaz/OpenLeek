@@ -1,0 +1,82 @@
+name: openleek-financial
+
+x-healthcheck: &healthcheck
+  interval: 5s
+  timeout: 3s
+  retries: 20
+  start_period: 10s
+
+x-financial-runtime: &financial-runtime
+  build:
+    context: ..
+    dockerfile: docker/financial-market.Dockerfile
+  init: true
+  working_dir: /app
+  volumes:
+    - ../apps:/app/apps
+    - ../packages:/app/packages
+    - ../scripts:/app/scripts:ro
+    - ../node_modules:/app/node_modules:ro
+    - ../package.json:/app/package.json:ro
+    - ../pnpm-lock.yaml:/app/pnpm-lock.yaml:ro
+    - ../pnpm-workspace.yaml:/app/pnpm-workspace.yaml:ro
+    - ../tsconfig.base.json:/app/tsconfig.base.json:ro
+
+x-financial-environment: &financial-environment
+  OPENLEEK_APP_PACKAGE: "@openleek/financial-market"
+  OPENLEEK_APP_DIR: "/app/apps/financial-market"
+  OPENLEEK_WATCH_PATHS: "/app/apps/financial-market,/app/apps/financial-market/src,/app/packages"
+  OPENLEEK_FINANCIAL_MARKET_DATABASE_URL: postgresql://openleek_financial_market_owner:${OPENLEEK_FINANCIAL_MARKET_DB_PASSWORD:-openleek-financial-market-password}@postgres:5432/openleek_financial_market
+  OPENLEEK_FINANCIAL_REVISION_CACHE_MAX_BYTES: ${OPENLEEK_FINANCIAL_REVISION_CACHE_MAX_BYTES:-536870912}
+  OPENLEEK_FINANCIAL_SEAL_CACHE_MAX_BYTES: ${OPENLEEK_FINANCIAL_SEAL_CACHE_MAX_BYTES:-134217728}
+  OPENLEEK_FINANCIAL_MCP_URL: http://financial-market:3000/internal/mcp
+  OPENLEEK_CONTEXT_BEARER_TOKEN: ${OPENLEEK_FINANCIAL_CONTEXT_BEARER_TOKEN:-openleek-financial-context-bearer-token-change-me}
+  OPENLEEK_ALGORITHM_RUNNER_URL: http://algorithm-runner:8080
+  OPENLEEK_FINANCIAL_MARKET_MAKER_HISTORY_URL: http://financial-market:3000/internal/market-maker/history
+  OPENLEEK_EXPERIMENT_CREDENTIAL_KID: ${OPENLEEK_EXPERIMENT_CREDENTIAL_KID:-local-ed25519-v1}
+  OPENLEEK_EXPERIMENT_CREDENTIAL_PUBLIC_KEY: ${OPENLEEK_EXPERIMENT_CREDENTIAL_PUBLIC_KEY:?OPENLEEK_EXPERIMENT_CREDENTIAL_PUBLIC_KEY is required}
+
+services:
+  financial-market:
+    <<: *financial-runtime
+    command: ["node", "scripts/watch-next-service.mjs"]
+    environment:
+      <<: *financial-environment
+      OPENLEEK_CONTEXT_OBSERVER_PROXY_TOKEN: ${OPENLEEK_CONSOLE_ACCESS_SESSION_SECRET:?OPENLEEK_CONSOLE_ACCESS_SESSION_SECRET is required}
+    networks:
+      financial-data:
+      core-context-plugins:
+        aliases: [financial-market]
+      core-financial:
+        aliases: [financial-market]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      <<: *healthcheck
+    restart: unless-stopped
+
+  financial-market-worker:
+    <<: *financial-runtime
+    command: ["node", "scripts/watch-next-service.mjs"]
+    environment:
+      <<: *financial-environment
+      OPENLEEK_FINANCIAL_MARKET_WORKER: "true"
+      OPENLEEK_WORKER_ID: financial-market-worker-1
+      OPENLEEK_REDIS_URL: redis://financial:${OPENLEEK_FINANCIAL_REDIS_PASSWORD:-openleek-financial-redis-password}@redis:6379
+    networks:
+      - financial-data
+      - core-financial
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      <<: *healthcheck
+    restart: unless-stopped
+
+networks:
+  financial-data:
+    name: openleek-financial-data
+    external: true
+  core-context-plugins:
+    name: openleek-core-context-plugins
+    external: true
+  core-financial:
+    name: openleek-core-financial
+    external: true

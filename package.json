@@ -1,0 +1,43 @@
+{
+  "name": "openleek",
+  "version": "2.0.0",
+  "private": true,
+  "description": "OpenLeek bounded-context simulation platform",
+  "packageManager": "pnpm@11.15.1",
+  "scripts": {
+    "build": "pnpm -r --if-present run build",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "test": "pnpm -r --if-present run test",
+    "lint": "pnpm -r --if-present run lint",
+    "build:prebuilt": "bash scripts/build-prebuilt.sh",
+    "verify:compose": "node scripts/verify-next-compose.mjs",
+    "verify:architecture": "node scripts/check-architecture-imports.mjs",
+    "compose:up": "node scripts/compose-up.mjs",
+    "compose:financial:up": "node scripts/compose-project.mjs financial up",
+    "compose:financial:stop": "node scripts/compose-project.mjs financial stop",
+    "compose:financial:ps": "node scripts/compose-project.mjs financial ps",
+    "compose:financial:logs": "node scripts/compose-project.mjs financial logs",
+    "compose:social:up": "node scripts/compose-project.mjs social up",
+    "compose:social:stop": "node scripts/compose-project.mjs social stop",
+    "compose:social:ps": "node scripts/compose-project.mjs social ps",
+    "compose:social:logs": "node scripts/compose-project.mjs social logs",
+    "compose:news:up": "node scripts/compose-project.mjs news up",
+    "compose:news:stop": "node scripts/compose-project.mjs news stop",
+    "compose:news:ps": "node scripts/compose-project.mjs news ps",
+    "compose:news:logs": "node scripts/compose-project.mjs news logs",
+    "test:contracts": "pnpm --filter @openleek/contracts test",
+    "test:experiment": "pnpm --filter @openleek/experiment test",
+    "test:console": "pnpm --filter @openleek/console-next test",
+    "test:e2e": "pnpm exec playwright test",
+    "test:e2e:real": "node scripts/run-compose-sandbox-e2e.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/node": "^22.15.29",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

@@ -1,0 +1,24 @@
+allowed_web_search_modes = []
+
+[features]
+goals = false
+hooks = true
+multi_agent = false
+
+[hooks]
+managed_dir = "/opt/openleek/codex-hooks"
+
+[[hooks.UserPromptSubmit]]
+
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "node /opt/openleek/codex-hooks/user-prompt-submit.mjs"
+timeout = 15
+additionalContextLimit = 2500
+
+[[hooks.PreToolUse]]
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "node /opt/openleek/codex-hooks/pre-tool-use.mjs"
+timeout = 15

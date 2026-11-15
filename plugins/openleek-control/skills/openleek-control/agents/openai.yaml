@@ -1,0 +1,13 @@
+interface:
+  display_name: "OpenLeek Control"
+  short_description: "Mutate OpenLeek Runs, assets, and shared LLM state"
+  default_prompt: "Use $openleek-control with $openleek-docs to validate and apply this OpenLeek state change."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "openleek_control"
+      description: "Private OpenLeek Control MCP"
+      transport: "streamable_http"
+      url: "https://openleek.noesis-ai.com/api/control/mcp"
+policy:
+  allow_implicit_invocation: true

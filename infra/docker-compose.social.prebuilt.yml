@@ -1,0 +1,20 @@
+services:
+  social-environment:
+    command: ["node", "/prebuilt/apps/social-environment/server.js"]
+    environment:
+      NODE_PATH: /prebuilt/node_modules
+      NODE_ENV: production
+    volumes: !override
+      - ${OPENLEEK_PREBUILT_ROOT:?OPENLEEK_PREBUILT_ROOT is required}/social-environment:/prebuilt:ro
+      - ../node_modules:/prebuilt/node_modules:ro
+      - ../apps/social-environment/node_modules:/prebuilt/apps/social-environment/node_modules:ro
+
+  social-environment-worker:
+    command: ["node", "/prebuilt/apps/social-environment/server.js"]
+    environment:
+      NODE_PATH: /prebuilt/node_modules
+      NODE_ENV: production
+    volumes: !override
+      - ${OPENLEEK_PREBUILT_ROOT:?OPENLEEK_PREBUILT_ROOT is required}/social-environment:/prebuilt:ro
+      - ../node_modules:/prebuilt/node_modules:ro
+      - ../apps/social-environment/node_modules:/prebuilt/apps/social-environment/node_modules:ro

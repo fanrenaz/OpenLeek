@@ -1,0 +1,5 @@
+import { gateway } from "../../../server/runtime";
+export const runtime = "nodejs";
+function authorized(request: Request) { const token = process.env.OPENLEEK_CONTEXT_GATEWAY_MANAGEMENT_TOKEN; return Boolean(token && request.headers.get("authorization") === `Bearer ${token}`); }
+export async function POST(request: Request) { if (!authorized(request)) return Response.json({ error: "management authorization required" }, { status: 401 }); try { return Response.json(await (await gateway()).issue(await request.json()), { headers: { "cache-control": "no-store" } }); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "invalid binding" }, { status: 400 }); } }
+export async function DELETE(request: Request) { if (!authorized(request)) return Response.json({ error: "management authorization required" }, { status: 401 }); const runId = new URL(request.url).searchParams.get("runId"); if (!runId) return Response.json({ error: "runId is required" }, { status: 400 }); await (await gateway()).revokeRun(runId); return Response.json({ revoked: true }); }

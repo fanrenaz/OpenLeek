@@ -1,0 +1,5 @@
+import { contextRegistry } from "../../../server/runtime";
+export const runtime = "nodejs";
+function authorized(request: Request) { const expected = process.env.OPENLEEK_CONTEXT_REGISTRY_MANAGEMENT_TOKEN; return Boolean(expected && request.headers.get("authorization") === `Bearer ${expected}`); }
+export async function GET(request: Request) { if (!authorized(request)) return Response.json({ error: "management authorization required" }, { status: 401 }); return Response.json({ installations: await (await contextRegistry()).list() }, { headers: { "cache-control": "no-store" } }); }
+export async function POST(request: Request) { if (!authorized(request)) return Response.json({ error: "management authorization required" }, { status: 401 }); try { return Response.json(await (await contextRegistry()).create(await request.json()), { status: 201, headers: { "cache-control": "no-store" } }); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "creation failed" }, { status: 400 }); } }

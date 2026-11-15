@@ -1,0 +1,4 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { ContextProvisioner } from "../src/server/provisioner";
+test("managed provisioning creates only requested isolated resources", async () => { const calls: string[] = []; const service = new ContextProvisioner({ async provision(role, database) { calls.push(`pg:${role}:${database}`); } }, { async provision(user, prefix) { calls.push(`redis:${user}:${prefix}`); } }); const result = await service.provision({ installationRef: "install:news:1", contextId: "news", infrastructure: { postgres: true, redis: false } }); assert.equal(calls.length, 1); assert.match(calls[0]!, /^pg:ctx_news_/); assert.ok(result.environment.OPENLEEK_CONTEXT_DATABASE_URL); assert.equal(result.environment.OPENLEEK_CONTEXT_REDIS_URL, undefined); });

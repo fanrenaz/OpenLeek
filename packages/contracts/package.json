@@ -1,0 +1,31 @@
+{
+  "name": "@openleek/contracts",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./agent": "./src/agent.ts",
+    "./assets": "./src/assets.ts",
+    "./canonical": "./src/canonical.ts",
+    "./context": "./src/context.ts",
+    "./core": "./src/core.ts",
+    "./data-dictionary": "./src/data-dictionary.ts",
+    "./experiment": "./src/experiment.ts",
+    "./observability": "./src/observability.ts",
+    "./turn-prompt": "./src/turn-prompt.ts",
+    "./world": "./src/world.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/**/*.test.ts"
+  },
+  "dependencies": {
+    "zod": "^3.24.2",
+    "zod-to-json-schema": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.29",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}

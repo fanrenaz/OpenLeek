@@ -1,0 +1,36 @@
+{
+  "name": "openleek-control",
+  "version": "0.2.0+codex.20260731032653",
+  "description": "Read live OpenLeek domain contracts and manage experiments, assets, Runs, and shared LLM configuration through the private Control MCP.",
+  "author": {
+    "name": "Noesis AI Technologies",
+    "url": "https://github.com/Noesis-AI-Technologies"
+  },
+  "homepage": "https://openleek.noesis-ai.com",
+  "repository": "https://github.com/Noesis-AI-Technologies/OpenLeek",
+  "license": "AGPL-3.0-only",
+  "keywords": [
+    "openleek",
+    "experiments",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "OpenLeek Control",
+    "shortDescription": "Read live contracts and manage private experiments",
+    "longDescription": "Connect Codex to the private OpenLeek Control MCP with one read-only live documentation Skill and one mutation-focused control Skill.",
+    "developerName": "Noesis AI Technologies",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://openleek.noesis-ai.com",
+    "defaultPrompt": [
+      "Explain an OpenLeek contract from the live data dictionary.",
+      "Validate an experiment specification and create a Run.",
+      "Manage an asset draft, publication, or tombstone."
+    ]
+  }
+}

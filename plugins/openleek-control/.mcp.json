@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "openleek_control": {
+      "type": "http",
+      "url": "https://openleek.noesis-ai.com/api/control/mcp",
+      "bearer_token_env_var": "OPENLEEK_CONSOLE_ACCESS_PASSWORD",
+      "default_tools_approval_mode": "writes"
+    }
+  }
+}
